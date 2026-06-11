@@ -27,6 +27,8 @@ cp backend/.env.example backend/.env
 docker compose up --build -d
 ```
 
+> **国内网络**：`docker-compose.yml` 已默认使用 DaoCloud 镜像加速拉取基础镜像，并用清华 PyPI / npmmirror 安装依赖。若仍失败，见下方「Docker 构建失败排查」。
+
 3. 访问：
 
 - 前端：http://localhost:5199
@@ -79,6 +81,36 @@ npm run dev
 | `GUEST_SESSION_SECRET` | 游客 Session 签名密钥 |
 | `CHORD_PROVIDER` | 和弦数据源（`mock`） |
 | `CORS_ORIGINS` | 允许的前端 Origin |
+
+## Docker 构建失败排查
+
+### 1. `Cannot connect to the Docker daemon`
+
+Docker Desktop 未启动。打开 Docker Desktop，等菜单栏鲸鱼图标显示 **Running** 后，再执行 `docker info` 确认 Server 段有输出。
+
+### 2. `failed to fetch oauth token` / `connection reset by peer`
+
+无法访问 Docker Hub（`auth.docker.io`），常见于国内网络或 IPv6 不稳定。本项目 compose 已默认：
+
+- 基础镜像：`docker.m.daocloud.io/library/...`
+- pip：`pypi.tuna.tsinghua.edu.cn`
+- npm：`registry.npmmirror.com`
+
+也可在 Docker Desktop → **Settings → Docker Engine** 中合并 `deploy/docker-daemon-mirror.example.json` 里的 `registry-mirrors`，并设置 `"ipv6": false` 后 Apply & Restart。
+
+海外环境可改回官方源：
+
+```bash
+REGISTRY= PIP_INDEX_URL=https://pypi.org/simple NPM_REGISTRY=https://registry.npmjs.org docker compose up --build -d
+```
+
+### 3. 手动预拉镜像（可选）
+
+```bash
+docker pull docker.m.daocloud.io/library/python:3.12-slim-bookworm
+docker pull docker.m.daocloud.io/library/node:22-alpine
+docker pull docker.m.daocloud.io/library/nginx:1.27-alpine
+```
 
 ## 仓库
 
