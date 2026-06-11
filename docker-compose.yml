@@ -1,0 +1,40 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: ai-music-backend
+    env_file:
+      - backend/.env
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8099
+      CORS_ORIGINS: http://localhost:5199,http://127.0.0.1:5199
+    volumes:
+      - backend-data:/app/backend/data
+      - backend-logs:/app/backend/logs
+    ports:
+      - "8099:8099"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8099/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: ai-music-frontend
+    ports:
+      - "5199:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  backend-data:
+  backend-logs:

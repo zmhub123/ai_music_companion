@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>音伴 — AI 音乐陪伴助手 原型</title>
+  <link rel="stylesheet" href="assets/style.css?v=13">
+  <!--
+    原型说明：本 HTML 仅用于设计验证，非生产前端源码。
+    生产实现：React + TypeScript + Vite + Ant Design
+    目标视口：桌面 1440×900
+    布局参考：用户提供的三栏播放工作台参考图
+    已走快速路径：Design Spec 明确 + 用户参考图，直接生成可点击原型。
+  -->
+</head>
+<body>
+
+  <!-- P01 偏好引导 -->
+  <div id="onboarding" class="modal-overlay hidden">
+    <div class="modal-card">
+      <h2>先认识一下你</h2>
+      <p>选择弹唱水平和喜欢的风格，推荐会更懂你</p>
+      <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">弹唱水平</p>
+      <div class="chip-group">
+        <button class="chip selected" data-level="beginner">零基础</button>
+        <button class="chip" data-level="intermediate">入门</button>
+        <button class="chip" data-level="advanced">进阶</button>
+      </div>
+      <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">风格偏好（可多选）</p>
+      <div class="chip-group">
+        <button class="chip selected" data-style="folk">民谣</button>
+        <button class="chip selected" data-style="pop">流行</button>
+        <button class="chip" data-style="rock">摇滚</button>
+        <button class="chip" data-style="ancient">古风</button>
+        <button class="chip" data-style="indie">独立</button>
+      </div>
+      <button id="btn-onboard-done" class="btn btn-primary">开始探索</button>
+    </div>
+  </div>
+
+  <header class="app-header">
+    <div class="logo">
+      <div class="logo-icon">♪</div>
+      <span>音伴</span>
+    </div>
+    <nav class="main-nav">
+      <button class="nav-link active" data-page="home">首页</button>
+      <button class="nav-link" data-page="playlists">歌单</button>
+      <button class="nav-link" data-page="scores">谱库</button>
+      <button class="nav-link" data-page="mine">我的</button>
+    </nav>
+    <div class="header-search" id="header-search-wrap">
+      <span class="search-icon" aria-hidden="true">⌕</span>
+      <input type="search" id="global-search" placeholder="搜索歌曲、歌手" autocomplete="off" aria-label="搜索歌曲">
+      <div id="global-search-dropdown" class="search-dropdown hidden"></div>
+    </div>
+    <div class="header-actions">
+      <button type="button" class="btn-header-chat" id="btn-header-chat" aria-label="打开 AI 助手">AI 助手</button>
+      <span class="badge-guest">游客模式</span>
+    </div>
+  </header>
+
+  <main class="app-main">
+
+    <!-- P02 首页 Hero + AI 侧栏 -->
+    <div id="page-home" class="page active page-home">
+      <section class="home-hero">
+        <h1>AI 音乐陪伴你</h1>
+        <p class="subtitle">输入你的心情，让 AI 为你推荐最适合的歌曲</p>
+        <div class="search-hero">
+          <input id="hero-input" type="text" placeholder="今天心情怎么样？">
+          <button id="btn-hero-send" class="btn-send ripple-host" aria-label="发送">↑</button>
+        </div>
+        <div class="mood-tags">
+          <button class="mood-tag" data-mood="今天很开心，想听欢快的歌">今天很开心</button>
+          <button class="mood-tag" data-mood="有点 emo，想安静一下">有点 emo</button>
+          <button class="mood-tag" data-mood="想放松一下，不要太吵">想放松一下</button>
+          <button class="mood-tag" data-mood="适合开车听的歌，节奏感强一点">适合开车听</button>
+        </div>
+      </section>
+    </div>
+
+    <!-- P02b 三栏播放工作台（参考图下半部分） -->
+    <div id="page-player" class="page-player">
+      <aside class="panel-left">
+        <h3>为您推荐</h3>
+        <div class="rec-list" id="rec-list"></div>
+        <button class="btn-more">查看更多推荐</button>
+      </aside>
+      <section class="panel-center">
+        <div class="vinyl-wrap">
+          <div class="vinyl-disc" id="vinyl-disc"></div>
+          <div class="vinyl-arm-mount" aria-hidden="true">
+            <div class="vinyl-arm" id="vinyl-arm" data-state="paused">
+              <span class="vinyl-arm-bar"></span>
+              <span class="vinyl-arm-head"></span>
+            </div>
+          </div>
+        </div>
+        <h2 class="player-title" id="player-title">夜航船</h2>
+        <p class="player-artist" id="player-artist">示例歌手</p>
+        <div class="progress-wrap">
+          <div class="progress-bar" id="progress-bar" role="slider" aria-label="播放进度" aria-valuemin="0" aria-valuemax="100" tabindex="0">
+            <div class="progress-fill" id="progress-fill"></div>
+            <div class="progress-thumb" id="progress-thumb"></div>
+          </div>
+          <div class="progress-time">
+            <span id="progress-current">01:24</span>
+            <span id="progress-total">04:29</span>
+          </div>
+        </div>
+        <div class="player-controls">
+          <button class="ctrl-btn" title="随机">⟳</button>
+          <button class="ctrl-btn" title="上一首">⏮</button>
+          <button class="ctrl-btn play-main" id="btn-play-main" title="播放/暂停">▶</button>
+          <button class="ctrl-btn" title="下一首">⏭</button>
+          <button class="ctrl-btn" title="循环">↻</button>
+        </div>
+        <div class="player-actions">
+          <button class="btn btn-outline" id="btn-guitar">吉他谱</button>
+          <button class="btn btn-outline" id="btn-ukulele">尤克里里谱</button>
+          <button class="btn btn-outline" id="btn-add-playlist">加入歌单</button>
+        </div>
+      </section>
+    </div>
+
+    <!-- P04 歌单列表 -->
+    <div id="page-playlists" class="page page-content">
+      <div class="page-header-row">
+        <h2>我的歌单</h2>
+        <button class="btn btn-primary btn-sm btn-create-playlist">新建歌单</button>
+      </div>
+      <div class="page-toolbar">
+        <div class="inline-search">
+          <span class="search-icon" aria-hidden="true">⌕</span>
+          <input type="search" id="playlist-search" placeholder="搜索歌单名称" autocomplete="off">
+        </div>
+      </div>
+      <div class="playlist-grid" id="playlist-grid"></div>
+      <p id="playlist-empty" class="search-empty hidden">没有匹配的歌单</p>
+    </div>
+
+    <!-- P05 歌单详情 -->
+    <div id="page-playlist-detail" class="page page-content">
+      <span class="back-link" id="back-playlists">← 返回歌单</span>
+      <div class="page-header-row page-header-row--detail">
+        <div>
+          <h2 id="playlist-detail-title">今晚治愈</h2>
+          <p class="page-desc page-desc--inline" id="playlist-detail-desc">适合疲惫夜晚的安静歌单 · 5 首</p>
+        </div>
+      </div>
+      <div class="page-toolbar">
+        <div class="inline-search">
+          <span class="search-icon" aria-hidden="true">⌕</span>
+          <input type="search" id="playlist-song-search" placeholder="在歌单内搜索歌曲" autocomplete="off">
+        </div>
+      </div>
+      <div class="song-table" id="playlist-songs"></div>
+      <p id="playlist-song-empty" class="search-empty hidden">歌单内没有匹配的歌曲</p>
+    </div>
+
+    <!-- P04b 谱库 -->
+    <div id="page-scores" class="page page-content">
+      <div class="page-header-row">
+        <h2>谱库</h2>
+      </div>
+      <p class="page-desc">已生成弹唱谱的歌曲会保存在这里，可随时查看吉他谱或尤克里里谱</p>
+      <div class="page-toolbar">
+        <div class="inline-search">
+          <span class="search-icon" aria-hidden="true">⌕</span>
+          <input type="search" id="score-search" placeholder="搜索谱库歌曲" autocomplete="off">
+        </div>
+      </div>
+      <div class="song-table" id="score-lib-list"></div>
+      <p id="score-empty" class="search-empty hidden">没有匹配的谱面歌曲</p>
+    </div>
+
+    <!-- P06 我的 -->
+    <div id="page-mine" class="page page-content">
+      <h2>我的</h2>
+      <div class="settings-section">
+        <h3>弹唱偏好</h3>
+        <div class="chip-group">
+          <button class="chip selected">零基础</button>
+          <button class="chip">入门</button>
+          <button class="chip">进阶</button>
+        </div>
+        <div class="chip-group" style="margin-top:12px">
+          <button class="chip selected">民谣</button>
+          <button class="chip selected">流行</button>
+          <button class="chip">摇滚</button>
+        </div>
+      </div>
+      <div class="settings-section">
+        <h3>游客说明</h3>
+        <p style="color:var(--text-secondary);line-height:1.6">当前为游客模式，歌单与对话数据保存在本设备。清除浏览器数据后将无法恢复。</p>
+      </div>
+      <button class="danger-link" id="btn-clear-data">清除全部数据</button>
+    </div>
+
+  </main>
+
+  <!-- P03 谱面抽屉 -->
+  <div id="score-drawer" class="score-drawer">
+    <div class="score-backdrop" id="score-backdrop"></div>
+    <div class="score-panel">
+      <div class="score-header">
+        <h3 id="score-title">夜航船 — 弹唱谱</h3>
+        <button class="btn btn-outline btn-sm" id="btn-close-score">关闭</button>
+      </div>
+      <div class="score-tabs">
+        <button class="score-tab active" data-tab="guitar">吉他</button>
+        <button class="score-tab" data-tab="ukulele">尤克里里</button>
+      </div>
+      <div class="score-body">
+        <section class="score-chords-section">
+          <div class="score-section-label">和弦</div>
+          <div class="score-top-row">
+            <div class="chord-diagrams-row" id="chord-diagrams"></div>
+            <div class="rhythm-pattern-wrap" id="rhythm-pattern"></div>
+          </div>
+        </section>
+        <section class="score-lyrics-section">
+          <div class="lyrics-block" id="chord-lines"></div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <!-- AI 聊天浮窗（全局） -->
+  <div id="chat-float" class="chat-float">
+    <div class="chat-float-header">
+      <div class="chat-float-title">
+        <span class="chat-float-dot"></span>
+        AI 音乐助手
+      </div>
+      <div class="chat-float-actions">
+        <button type="button" class="chat-float-btn" id="btn-chat-minimize" title="最小化">—</button>
+        <button type="button" class="chat-float-btn" id="btn-chat-close" title="关闭">×</button>
+      </div>
+    </div>
+    <div class="chat-float-body">
+      <div class="ai-messages" id="ai-messages">
+        <div class="bubble bubble-ai">你好，我是你的音乐陪伴助手。告诉我此刻的心情，我来为你荐歌。</div>
+        <div class="bubble bubble-user">我今天有点累</div>
+        <div class="bubble bubble-ai">
+          辛苦了，先慢慢呼吸一下。我挑了几首温柔的歌，你可以先听听看：
+          <div class="song-rec-inline" id="ai-rec-initial"></div>
+        </div>
+      </div>
+    </div>
+    <div class="chat-float-footer">
+      <input id="ai-chat-input" type="text" placeholder="继续和 AI 聊聊…" autocomplete="off">
+      <button type="button" class="chat-send-btn ripple-host" id="btn-chat-send" aria-label="发送">↑</button>
+    </div>
+  </div>
+
+  <button type="button" class="chat-fab hidden" id="chat-fab" aria-label="打开 AI 助手">
+    <span class="chat-fab-icon">♪</span>
+    <span class="chat-fab-label">AI 助手</span>
+  </button>
+
+  <div id="toast" class="toast"></div>
+
+  <script src="assets/app.js?v=13"></script>
+</body>
+</html>

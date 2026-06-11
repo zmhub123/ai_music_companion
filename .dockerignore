@@ -1,0 +1,38 @@
+# Git & IDE
+.git
+.gitignore
+.DS_Store
+.idea
+.vscode
+
+# Python
+__pycache__
+*.py[cod]
+.venv
+venv
+.mypy_cache
+.ruff_cache
+.pytest_cache
+*.egg-info
+
+# Node
+node_modules
+frontend/dist
+frontend/.vite
+
+# Secrets & local data
+.env
+.env.*
+backend/.env
+frontend/.env
+frontend/.env.local
+backend/data
+data
+
+# Logs & caches
+logs
+backend/logs
+*.log
+
+# SDD runtime (not needed in image)
+.sdd/tmp

@@ -1,0 +1,10 @@
+{
+  "id": "ai-music-companion",
+  "name": "AI 音乐陪伴助手",
+  "project_type": "web",
+  "source": "new",
+  "repo_url": "git@github.com:zmhub123/ai_music_companion.git",
+  "created_at": "2026-06-07 15:09:40",
+  "last_active": "2026-06-12 00:22:56",
+  "harness_version": "V7.1"
+}
