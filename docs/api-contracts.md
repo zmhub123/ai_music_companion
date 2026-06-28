@@ -149,6 +149,10 @@ interface PlayUrl {
   expires_in: number;
   quality: string;
   fallback_url: string | null;
+  /** VIP 曲目试听片段时为 true */
+  vip_trial?: boolean;
+  trial_duration_sec?: number;
+  vip_only?: boolean;
 }
 ```
 
@@ -514,9 +518,9 @@ interface PlayUrl {
 
 ### GET /api/v1/songs/{netease_song_id}/play-url
 
-**说明：** 获取可播放音频地址（有时效）。
+**说明：** 获取可播放音频地址（有时效）。VIP 曲目在未登录或无会员时可能返回试听片段，此时 `vip_trial=true` 且 `trial_duration_sec` 为试听秒数（常见 30）。
 
-**响应（成功 200）：**
+**响应（成功 200，完整播放）：**
 
 ```json
 {
@@ -527,6 +531,24 @@ interface PlayUrl {
     "expires_in": 1200,
     "quality": "standard",
     "fallback_url": "https://music.163.com/song?id=186016"
+  }
+}
+```
+
+**响应（成功 200，VIP 试听）：**
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "url": "https://m702.music.126.net/example-trial.mp3",
+    "expires_in": 1200,
+    "quality": "standard",
+    "fallback_url": "https://music.163.com/song?id=382844",
+    "vip_trial": true,
+    "trial_duration_sec": 30,
+    "vip_only": true
   }
 }
 ```

@@ -2,6 +2,8 @@ from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
 
+from src.integrations.music_provider import PlayabilityInfo, TrackAudioResult
+
 
 def _guest_cookies(client: TestClient) -> dict[str, str]:
     res = client.post("/api/v1/guest/session")
@@ -50,11 +52,18 @@ def test_get_song_not_found(client: TestClient) -> None:
     assert res.json()["code"] == 40402
 
 
+def _mock_full_audio(url: str = "http://example.com/qingtian.mp3") -> TrackAudioResult:
+    return TrackAudioResult(
+        url=url,
+        info=PlayabilityInfo(playable=True, vip_required=False),
+    )
+
+
 def test_play_url_legacy_id_alias(client: TestClient) -> None:
     with patch(
-        "src.services.music_service.resolve_direct_play_url",
+        "src.services.music_service.resolve_track_audio",
         new_callable=AsyncMock,
-        return_value="http://example.com/qingtian.mp3",
+        return_value=_mock_full_audio(),
     ):
         res = client.get("/api/v1/songs/186016/play-url", cookies=_guest_cookies(client))
     assert res.status_code == 200
@@ -65,9 +74,9 @@ def test_play_url_legacy_id_alias(client: TestClient) -> None:
 
 def test_play_url_returns_stream_or_direct(client: TestClient) -> None:
     with patch(
-        "src.services.music_service.resolve_direct_play_url",
+        "src.services.music_service.resolve_track_audio",
         new_callable=AsyncMock,
-        return_value="http://example.com/qingtian.mp3",
+        return_value=_mock_full_audio(),
     ):
         res = client.get("/api/v1/songs/186016/play-url", cookies=_guest_cookies(client))
     assert res.status_code == 200
@@ -79,9 +88,9 @@ def test_play_url_returns_stream_or_direct(client: TestClient) -> None:
 
 def test_play_url_wrong_metadata_id_still_plays(client: TestClient) -> None:
     with patch(
-        "src.services.music_service.resolve_direct_play_url",
+        "src.services.music_service.resolve_track_audio",
         new_callable=AsyncMock,
-        return_value="http://example.com/qingtian.mp3",
+        return_value=_mock_full_audio(),
     ):
         res = client.get("/api/v1/songs/3339230677/play-url", cookies=_guest_cookies(client))
     assert res.status_code == 200
@@ -134,7 +143,7 @@ def test_stream_not_found(client: TestClient) -> None:
 def test_play_url_vip_returns_vip_required(client: TestClient) -> None:
     with (
         patch(
-            "src.services.music_service.resolve_direct_play_url",
+            "src.services.music_service.resolve_track_audio",
             new_callable=AsyncMock,
             return_value=None,
         ),
@@ -162,7 +171,7 @@ def test_play_url_vip_returns_vip_required(client: TestClient) -> None:
 def test_play_url_unavailable_returns_50004(client: TestClient) -> None:
     with (
         patch(
-            "src.services.music_service.resolve_direct_play_url",
+            "src.services.music_service.resolve_track_audio",
             new_callable=AsyncMock,
             return_value=None,
         ),

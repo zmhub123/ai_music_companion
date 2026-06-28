@@ -12,11 +12,12 @@ from pathlib import Path
 from typing import Any
 
 from pycore.core.logger import get_logger
+from src.core.flow_log import current_flow_id, log_song_list, log_step
 
 logger = get_logger()
 
 _pyncm_session_ready = False
-_play_url_cache: dict[int, tuple[str, float]] = {}
+_track_audio_cache: dict[int, tuple["TrackAudioResult", float]] = {}
 PLAY_URL_CACHE_TTL = 1100.0
 
 # 错误 ID → 元数据正版 ID（3339230677 实为专辑《不散》同名曲，非叶惠美版）
@@ -98,6 +99,14 @@ SEED_SONGS: list[dict[str, Any]] = [
 class PlayabilityInfo:
     playable: bool
     vip_required: bool
+    trial_preview: bool = False
+    trial_duration_sec: int | None = None
+
+
+@dataclass
+class TrackAudioResult:
+    url: str | None
+    info: PlayabilityInfo
 
 
 @dataclass
@@ -714,6 +723,43 @@ def _extract_play_url(audio_item: dict[str, Any]) -> str | None:
     return str(url) if url else None
 
 
+def _trial_duration_sec(audio_item: dict[str, Any]) -> int | None:
+    trial = audio_item.get("freeTrialInfo")
+    if not isinstance(trial, dict):
+        return None
+    try:
+        start = int(trial.get("start") or 0)
+        end = int(trial.get("end") or 0)
+    except (TypeError, ValueError):
+        return None
+    if end > start > 0:
+        return end - start
+    if end > 0:
+        return end
+    return None
+
+
+def _inspect_track_audio_item(audio_item: dict[str, Any]) -> PlayabilityInfo:
+    url = _extract_play_url(audio_item)
+    trial_sec = _trial_duration_sec(audio_item)
+    fee = audio_item.get("fee")
+    is_vip_track = fee in (1, 4)
+
+    if url and trial_sec:
+        return PlayabilityInfo(
+            playable=True,
+            vip_required=False,
+            trial_preview=True,
+            trial_duration_sec=trial_sec,
+        )
+    if url:
+        return PlayabilityInfo(playable=True, vip_required=False)
+
+    code = audio_item.get("code")
+    vip_required = code == 404 or is_vip_track
+    return PlayabilityInfo(playable=False, vip_required=vip_required)
+
+
 def _playability_map_sync(song_ids: list[int]) -> dict[int, PlayabilityInfo]:
     if not song_ids:
         return {}
@@ -731,13 +777,7 @@ def _playability_map_sync(song_ids: list[int]) -> dict[int, PlayabilityInfo]:
         if song_id is None:
             continue
         sid = int(song_id)
-        if _extract_play_url(item):
-            info_map[sid] = PlayabilityInfo(playable=True, vip_required=False)
-            continue
-        code = item.get("code")
-        fee = item.get("fee")
-        vip_required = code == 404 or fee == 1
-        info_map[sid] = PlayabilityInfo(playable=False, vip_required=vip_required)
+        info_map[sid] = _inspect_track_audio_item(item)
     return info_map
 
 
@@ -749,7 +789,7 @@ def _playable_ids_pyncm_sync(song_ids: list[int]) -> set[int]:
     }
 
 
-def _play_url_pyncm_sync(song_id: int) -> str | None:
+def _fetch_track_audio_pyncm_sync(song_id: int) -> TrackAudioResult | None:
     _ensure_pyncm_session()
     apis = importlib.import_module("pyncm.apis")
     for sid in _resolve_song_ids(song_id):
@@ -759,10 +799,19 @@ def _play_url_pyncm_sync(song_id: int) -> str | None:
         data_list = result.get("data") or []
         if not data_list or not isinstance(data_list[0], dict):
             continue
-        url = _extract_play_url(data_list[0])
+        item = data_list[0]
+        info = _inspect_track_audio_item(item)
+        url = _extract_play_url(item)
         if url:
-            return url
+            return TrackAudioResult(url=url, info=info)
+        if not info.playable:
+            return TrackAudioResult(url=None, info=info)
     return None
+
+
+def _play_url_pyncm_sync(song_id: int) -> str | None:
+    result = _fetch_track_audio_pyncm_sync(song_id)
+    return result.url if result else None
 
 
 async def check_playability(song_id: int) -> PlayabilityInfo:
@@ -791,7 +840,12 @@ async def _enrich_playability(candidates: list[SongCandidate]) -> list[SongCandi
         if info is None:
             continue
         song.playable = info.playable
-        song.vip_only = info.vip_required and not info.playable
+        if info.trial_preview:
+            song.vip_only = True
+        elif info.playable:
+            song.vip_only = False
+        else:
+            song.vip_only = info.vip_required
     return candidates
 
 
@@ -858,6 +912,21 @@ async def search_songs(keywords: str, limit: int = 10, *, fetch_limit: int | Non
     search_queries = _build_search_queries(keywords)
     official = _official_seed_candidates(query, limit)
     remote_fetch = fetch_limit or max(limit * 4, 20)
+    in_flow = current_flow_id() is not None
+
+    if in_flow:
+        log_step(
+            "搜索开始",
+            input_keywords=keywords,
+            normalized_query=query,
+            search_queries=search_queries,
+            seed_hits=len(official),
+            fetch_limit=remote_fetch,
+            return_limit=limit,
+            pyncm_available=_pyncm_available(),
+        )
+        if official:
+            log_song_list("种子曲库命中", official, limit=5)
 
     remote_originals: list[SongCandidate] = []
     netease_canonical: SongCandidate | None = None
@@ -870,6 +939,13 @@ async def search_songs(keywords: str, limit: int = 10, *, fetch_limit: int | Non
                 _assign_search_ranks(batch, rank_cursor)
                 rank_cursor += len(batch)
                 remote = _merge_candidates(remote, batch)
+                if in_flow:
+                    log_step(
+                        "pyncm 分批搜索",
+                        query=q,
+                        batch_size=len(batch),
+                        merged_total=len(remote),
+                    )
             netease_canonical = _pick_netease_canonical(remote, query)
             remote_originals = [
                 song
@@ -890,34 +966,79 @@ async def search_songs(keywords: str, limit: int = 10, *, fetch_limit: int | Non
                 else:
                     song.is_original = False
             if remote:
-                logger.info(
-                    "pyncm search hit",
-                    keywords=keywords,
-                    query=query,
-                    search_queries=search_queries,
-                    total=len(remote),
-                    originals=len(remote_originals),
-                    canonical_id=netease_canonical.netease_song_id if netease_canonical else None,
+                canonical_line = (
+                    f"{netease_canonical.song_name}-{netease_canonical.artist_name}"
+                    f"(id={netease_canonical.netease_song_id})"
+                    if netease_canonical
+                    else None
                 )
+                if in_flow:
+                    log_step(
+                        "pyncm 搜索汇总",
+                        total=len(remote),
+                        originals=len(remote_originals),
+                        filtered_covers=len(remote) - len(remote_originals),
+                        canonical=canonical_line,
+                    )
+                    log_song_list("pyncm 原版候选", remote_originals, limit=10)
+                else:
+                    logger.info(
+                        "pyncm search hit",
+                        keywords=keywords,
+                        query=query,
+                        search_queries=search_queries,
+                        total=len(remote),
+                        originals=len(remote_originals),
+                        canonical_id=netease_canonical.netease_song_id if netease_canonical else None,
+                    )
         except Exception as exc:
-            logger.warning("pyncm search failed, fallback to seed", error=str(exc))
+            if in_flow:
+                log_step("pyncm 搜索失败，降级种子", error=str(exc))
+            else:
+                logger.warning("pyncm search failed, fallback to seed", error=str(exc))
+    elif in_flow:
+        log_step("pyncm 不可用，跳过远程搜索")
 
     candidates = _merge_candidates(official, remote_originals)
+    used_seed_fallback = False
     if not candidates:
+        used_seed_fallback = True
         candidates = official or [
             song
             for song in _search_seed(query, limit)
             if not _is_cover_version(song, canonical=netease_canonical)
         ]
-        logger.info("music search using seed fallback", keywords=keywords, query=query)
+        if in_flow:
+            log_step("使用种子兜底", query=query, fallback_count=len(candidates))
+        else:
+            logger.info("music search using seed fallback", keywords=keywords, query=query)
 
     for song in candidates:
         if _is_official_seed_song(song):
             song.is_original = True
 
     candidates = await _enrich_playability(candidates)
+    if in_flow:
+        playable_count = sum(1 for song in candidates if song.playable)
+        log_step(
+            "可播性检测完成",
+            candidate_count=len(candidates),
+            playable_count=playable_count,
+            vip_count=sum(1 for song in candidates if song.vip_only),
+        )
+
     candidates = _sort_original_first(candidates, query)
-    return candidates[:limit]
+    result = candidates[:limit]
+
+    if in_flow:
+        log_step(
+            "搜索结束",
+            result_count=len(result),
+            used_seed_fallback=used_seed_fallback,
+        )
+        log_song_list("搜索最终结果", result, limit=limit)
+
+    return result
 
 
 async def get_song_detail(song_id: int) -> SongDetail | None:
@@ -936,21 +1057,26 @@ async def get_song_detail(song_id: int) -> SongDetail | None:
     return _seed_to_detail(seed)
 
 
-async def resolve_direct_play_url(song_id: int) -> str | None:
+async def resolve_track_audio(song_id: int) -> TrackAudioResult | None:
     now = time.monotonic()
-    cached = _play_url_cache.get(song_id)
+    cached = _track_audio_cache.get(song_id)
     if cached and now < cached[1]:
         return cached[0]
 
     if _pyncm_available():
         try:
-            url = await asyncio.to_thread(_play_url_pyncm_sync, song_id)
-            if url:
-                _play_url_cache[song_id] = (url, now + PLAY_URL_CACHE_TTL)
-                return url
+            result = await asyncio.to_thread(_fetch_track_audio_pyncm_sync, song_id)
+            if result is not None:
+                _track_audio_cache[song_id] = (result, now + PLAY_URL_CACHE_TTL)
+                return result
         except Exception as exc:
             logger.warning("pyncm play url failed", song_id=song_id, error=str(exc))
     return None
+
+
+async def resolve_direct_play_url(song_id: int) -> str | None:
+    result = await resolve_track_audio(song_id)
+    return result.url if result else None
 
 
 async def resolve_stream_source(song_id: int) -> str | None:

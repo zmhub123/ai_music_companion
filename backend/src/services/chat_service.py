@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from pycore.core.logger import get_logger
 from src.api.errors import AppApiError
+from src.core.flow_log import begin_flow, end_flow, log_song_list, log_step
 from src.db.models import ChatMessage, GuestSession
 from src.integrations.dashscope_client import DashScopeClient, DashScopeError, get_dashscope_client
 from src.integrations.music_provider import (
@@ -553,6 +554,16 @@ async def send_message(
     llm = client or get_dashscope_client()
 
     try:
+        flow_id = begin_flow("聊天荐歌")
+        log_step(
+            "收到用户消息",
+            guest_id=guest.guest_id,
+            content=text,
+            skill_level=guest.skill_level,
+            style_preferences=guest.style_preferences,
+            llm_mock=llm.use_mock,
+        )
+
         user_message = ChatMessage(guest_id=guest.guest_id, role="user", content=text)
         db.add(user_message)
         await db.flush()
@@ -563,24 +574,68 @@ async def send_message(
             .order_by(ChatMessage.created_at.asc())
         )
         history = list(history_result.scalars().all())
+        log_step("加载历史消息", history_count=len(history))
 
         direct = is_direct_song_request(text)
         heuristic_intent = _heuristic_intent(text, history)
         if llm.use_mock or heuristic_intent == "recommend_music":
             intent = heuristic_intent
+            intent_source = "heuristic"
         else:
             intent = await _classify_intent(llm, text, history)
+            intent_source = "llm"
+
+        log_step(
+            "意图判定",
+            direct_request=direct,
+            heuristic_intent=heuristic_intent,
+            final_intent=intent,
+            source=intent_source,
+        )
 
         if intent == "recommend_music":
             rec_limit = DIRECT_RECOMMEND_COUNT if direct else MOOD_RECOMMEND_COUNT
             search_limit = max(rec_limit * 2, 20)
+            log_step(
+                "荐歌参数",
+                mode="点歌" if direct else "情绪荐歌",
+                rec_limit=rec_limit,
+                search_limit=search_limit,
+            )
+
             keywords = await _extract_keywords(llm, text, guest, history)
+            heuristic_keywords = _extract_keywords_heuristic(text, guest)
+            mood_keywords = _extract_mood_style_query(text)
+            song_keywords = extract_song_search_keywords(text)
+            log_step(
+                "关键词提取",
+                final_keywords=keywords,
+                mood_query=mood_keywords,
+                song_query=song_keywords,
+                heuristic_fallback=heuristic_keywords,
+            )
+
             candidates = await search_songs(keywords, limit=search_limit)
+            log_song_list("搜索召回", candidates, limit=15)
+
+            fallback_used = False
             if not candidates:
+                fallback_used = True
+                log_step("搜索无结果，使用兜底词", fallback_keywords="民谣 治愈")
                 candidates = await search_songs("民谣 治愈", limit=search_limit)
+                log_song_list("兜底搜索召回", candidates, limit=15)
+
             recommendations = await _rerank_recommendations(
                 llm, text, guest, candidates, direct=direct, limit=rec_limit
             )
+            log_song_list("重排结果", recommendations, limit=rec_limit)
+            log_step(
+                "重排完成",
+                rerank_mode="direct_top" if direct else ("mock" if llm.use_mock else "llm"),
+                recommendation_count=len(recommendations),
+                fallback_search=fallback_used,
+            )
+
             assistant_content = await _generate_recommend_reply(
                 llm, text, guest, recommendations, direct=direct
             )
@@ -589,9 +644,18 @@ async def send_message(
                 "recommendations": recommendations,
                 "auto_play": direct and bool(recommendations),
             }
+            log_step(
+                "生成回复",
+                assistant_preview=assistant_content[:120],
+                auto_play=metadata["auto_play"],
+                first_song_id=(
+                    recommendations[0].get("netease_song_id") if recommendations else None
+                ),
+            )
         else:
             assistant_content = await _generate_chat_reply(llm, text, guest, history)
             metadata = {"intent": "chat_only"}
+            log_step("纯聊天回复", assistant_preview=assistant_content[:120])
 
         assistant_message = ChatMessage(
             guest_id=guest.guest_id,
@@ -605,11 +669,18 @@ async def send_message(
         await db.refresh(user_message)
         await db.refresh(assistant_message)
 
+        end_flow(
+            flow_id=flow_id,
+            intent=metadata.get("intent") if metadata else "chat_only",
+            message_id=assistant_message.id,
+        )
+
         return {
             "user_message": message_to_dict(user_message),
             "assistant_message": message_to_dict(assistant_message),
         }
     except DashScopeError as exc:
         await db.rollback()
+        end_flow(status="failed", error=str(exc))
         logger.error("LLM service failed", error=str(exc))
         raise AppApiError(50001, "AI 服务暂时不可用，请稍后再试", http_status=500) from exc

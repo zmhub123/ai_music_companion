@@ -27,6 +27,15 @@ export function showVipPaidMessage(): void {
   })
 }
 
+export function showVipTrialNotice(songName: string, trialSeconds = 30): void {
+  Modal.info({
+    title: 'VIP 歌曲试听',
+    content: `《${songName}》为网易云 VIP 歌曲，当前仅可试听前 ${trialSeconds} 秒。`,
+    centered: true,
+    okText: '知道了',
+  })
+}
+
 export function confirmVipPlayback(songName: string, fallbackUrl: string): Promise<boolean> {
   return new Promise((resolve) => {
     Modal.confirm({

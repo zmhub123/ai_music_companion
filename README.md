@@ -96,7 +96,26 @@ Docker Desktop 未启动。打开 Docker Desktop，等菜单栏鲸鱼图标显�
 - pip：`pypi.tuna.tsinghua.edu.cn`
 - npm：`registry.npmmirror.com`
 
-也可在 Docker Desktop → **Settings → Docker Engine** 中合并 `deploy/docker-daemon-mirror.example.json` 里的 `registry-mirrors`，并设置 `"ipv6": false` 后 Apply & Restart。
+也可在 Docker Desktop → **Settings → Docker Engine** 中，把 `registry-mirrors` 和 `ipv6` **合并进同一个 JSON 对象**（不能写成两个 `{}`），例如：
+
+```json
+{
+  "builder": {
+    "gc": {
+      "defaultKeepStorage": "20GB",
+      "enabled": true
+    }
+  },
+  "experimental": false,
+  "registry-mirrors": [
+    "https://docker.m.daocloud.io",
+    "https://hub-mirror.c.163.com"
+  ],
+  "ipv6": false
+}
+```
+
+修改后点击 **Apply & Restart**。
 
 海外环境可改回官方源：
 

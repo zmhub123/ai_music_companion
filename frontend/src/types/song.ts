@@ -16,6 +16,9 @@ export interface PlayUrl {
   expires_in: number
   quality: string
   fallback_url: string | null
+  vip_trial?: boolean
+  trial_duration_sec?: number
+  vip_only?: boolean
 }
 
 export interface PlayerSong {

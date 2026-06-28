@@ -1,12 +1,16 @@
 # 音伴前端 — Vite 构建 + Nginx 静态托管
-ARG NODE_IMAGE=docker.m.daocloud.io/library/node:22-alpine
+# 多阶段构建：ARG 必须在首个 FROM 之前声明，才能用于后续 FROM
+ARG NODE_IMAGE=docker.1ms.run/library/node:22-alpine
+ARG NGINX_IMAGE=docker.1ms.run/library/nginx:1.27-alpine
+ARG NPM_REGISTRY=https://registry.npmmirror.com
+
 FROM ${NODE_IMAGE} AS builder
+
+ARG NPM_REGISTRY=https://registry.npmmirror.com
 
 WORKDIR /app/frontend
 
 COPY frontend/package.json frontend/package-lock.json ./
-
-ARG NPM_REGISTRY=https://registry.npmmirror.com
 RUN npm config set registry "${NPM_REGISTRY}" && npm ci
 
 COPY frontend/ ./
@@ -16,7 +20,6 @@ ENV VITE_API_BASE_URL=/api
 
 RUN npm run build
 
-ARG NGINX_IMAGE=docker.m.daocloud.io/library/nginx:1.27-alpine
 FROM ${NGINX_IMAGE}
 
 COPY deploy/nginx.conf /etc/nginx/conf.d/default.conf

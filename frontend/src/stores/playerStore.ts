@@ -1,13 +1,13 @@
 import { create } from 'zustand'
 import { DEFAULT_PLAYER_SONG, SEED_RECOMMENDATIONS } from '../constants/seedSongs'
 import { getPlayUrl, PlayUrlError } from '../services/musicService'
-import type { PlayerSong } from '../types/song'
-import { confirmVipPlayback, neteaseSongUrl } from '../utils/playConfirm'
+import type { PlayUrl, PlayerSong } from '../types/song'
+import { confirmVipPlayback, neteaseSongUrl, showVipTrialNotice } from '../utils/playConfirm'
 
 let audioEl: HTMLAudioElement | null = null
 let loadedSongId: number | null = null
 let preloadGeneration = 0
-const playUrlCache = new Map<number, { url: string; expiresAt: number }>()
+const playUrlCache = new Map<number, { meta: PlayUrl; expiresAt: number }>()
 
 const MOCK_SONG_ID_THRESHOLD = 1_000_000
 
@@ -33,27 +33,27 @@ function resetAudioElement() {
   loadedSongId = null
 }
 
-function getCachedPlayUrl(songId: number): string | null {
+function getCachedPlayUrl(songId: number): PlayUrl | null {
   const cached = playUrlCache.get(songId)
-  if (cached && Date.now() < cached.expiresAt) return cached.url
+  if (cached && Date.now() < cached.expiresAt) return cached.meta
   if (cached) playUrlCache.delete(songId)
   return null
 }
 
-function cachePlayUrl(songId: number, url: string, expiresInSec: number) {
+function cachePlayUrl(songId: number, meta: PlayUrl, expiresInSec: number) {
   playUrlCache.set(songId, {
-    url,
+    meta,
     expiresAt: Date.now() + Math.max(expiresInSec * 1000 - 60_000, 30_000),
   })
 }
 
-async function resolvePlayUrl(songId: number): Promise<string> {
+async function resolvePlayUrl(songId: number): Promise<PlayUrl> {
   const cached = getCachedPlayUrl(songId)
   if (cached) return cached
 
-  const { url, expires_in: expiresIn } = await getPlayUrl(songId)
-  cachePlayUrl(songId, url, expiresIn)
-  return url
+  const meta = await getPlayUrl(songId)
+  cachePlayUrl(songId, meta, meta.expires_in)
+  return meta
 }
 
 function preloadAudioSrc(songId: number, url: string, generation: number) {
@@ -177,11 +177,14 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     }
 
     try {
-      const url = await resolvePlayUrl(song.netease_song_id)
+      const playMeta = await resolvePlayUrl(song.netease_song_id)
       if (generation !== preloadGeneration) return null
-      preloadAudioSrc(song.netease_song_id, url, generation)
+      preloadAudioSrc(song.netease_song_id, playMeta.url, generation)
 
       await audio.play()
+      if (playMeta.vip_trial) {
+        showVipTrialNotice(song.song_name, playMeta.trial_duration_sec ?? 30)
+      }
       set({
         currentSong: song,
         playing: true,

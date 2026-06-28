@@ -1,5 +1,6 @@
 """应用配置：从 backend/.env 加载，经 ConfigManager 管理。"""
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -66,11 +67,7 @@ def _parse_cors_origins(raw: str | None) -> list[str]:
     return [item.strip() for item in raw.split(",") if item.strip()]
 
 
-def _env_file_to_settings_dict(env_path: Path) -> dict[str, Any]:
-    if not env_path.is_file():
-        raise FileNotFoundError(f"Config file not found: {env_path}")
-
-    raw = dotenv_values(env_path)
+def _raw_env_to_settings_dict(raw: dict[str, str | None]) -> dict[str, Any]:
     return {
         "dashscope_api_key": raw.get("DASHSCOPE_API_KEY", ""),
         "llm_base_url": raw.get("LLM_BASE_URL", AppSettings.model_fields["llm_base_url"].default),
@@ -97,6 +94,13 @@ def _env_file_to_settings_dict(env_path: Path) -> dict[str, Any]:
         "cors_origins": _parse_cors_origins(raw.get("CORS_ORIGINS")),
         "netease_cookie_path": raw.get("NETEASE_COOKIE_PATH", ""),
     }
+
+
+def _env_file_to_settings_dict(env_path: Path) -> dict[str, Any]:
+    if env_path.is_file():
+        return _raw_env_to_settings_dict(dotenv_values(env_path))
+    # Docker compose env_file 注入环境变量，不写入容器内 .env 文件
+    return _raw_env_to_settings_dict(os.environ)
 
 
 def load_settings(env_path: Path | None = None) -> AppSettings:

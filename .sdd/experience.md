@@ -47,3 +47,26 @@
 - **陷阱**：`togglePlay` 暂停后再播放若重新调用 `playSong`，会重复请求 `play-url` 并重载 audio，导致每次恢复等待数秒。
 - **经验**：前端缓存 play-url（Map + TTL）；暂停恢复时若同一首歌已加载则直接 `audio.play()`；推荐列表/聊天卡片预取前 3 首 URL，首条同时 `warmAudioBuffer` 预热。
 - **经验**：后端 `resolve_direct_play_url` 内存缓存 1100s，避免每次播放都调 pyncm。
+
+### Bugfix: 前端 Vite 代理 ECONNREFUSED（非路由配错）
+- **触发**：只运行 `npm run dev`、未先启动后端时，Vite 报 `http proxy error ... ECONNREFUSED`
+- **根因**：代理目标 `8099` 无进程监听；不是 `/api` 路径或 axios `baseURL` 配置错误
+- **已有经验回查**：T-001 要求配 `/api` 代理，但未覆盖「后端未启动」的识别方式
+- **为什么仍然犯错**：错误信息像网络/路由故障，缺少启动期健康检查提示
+- **修复**：`VITE_BACKEND_PROXY_TARGET` 默认改为 `http://127.0.0.1:8099`；`vite.config.ts` 启动时探测 `/health`；`dev-frontend.sh` 启动前检查后端
+- **避坑规则**：本地开发必须双终端——先 `./scripts/dev-backend.sh`，再 `./scripts/dev-frontend.sh`；看到 ECONNREFUSED 先 `curl http://127.0.0.1:8099/health`
+
+### Bugfix: 顶栏搜索点击无播放
+- **触发**：搜索有结果，点击后仅跳转或无任何变化，播放器仍显示默认种子歌
+- **根因**：`GlobalSearch` 只 `navigate('/player')`，未 `setRecommendations` / `playSong`
+- **已有经验回查**：chatStore 已有荐歌→播放器联动模式，GlobalSearch 未复用
+- **修复**：点击/回车时把搜索结果写入 `playerStore`，跳转后播放选中歌曲
+- **避坑规则**：任何「选歌」入口（搜索、聊天卡片、歌单）必须同时更新 `recommendations` + `currentSong`（`playSong`）
+
+### Bugfix: VIP 歌曲返回试听 URL 被误判为完整可播
+- **触发**：VIP 歌曲（如《下一站天后》id=382844）聊天点歌后只播放约 30 秒即停止，无提示
+- **根因**：网易云 `GetTrackAudio` 在游客 Session 下对 VIP 曲返回带 `freeTrialInfo.end=30` 的试听 MP3；后端仅以 `url` 非空判定 `playable=true`，忽略试听标记
+- **已有经验回查**：T-009 覆盖无 URL 的 VIP 失败路径，未覆盖试听片段
+- **为什么仍然犯错**：可播性检测与 play-url 未解析 `freeTrialInfo`/`fee` 组合态
+- **修复**：`_inspect_track_audio_item` 识别试听；`play-url` 返回 `vip_trial`/`trial_duration_sec`；前端 `showVipTrialNotice` 弹窗
+- **避坑规则**：`GetTrackAudio` 有 URL 不等于完整可播；必须检查 `freeTrialInfo` 或试听 CDN；荐歌 `vip_only` 在试听场景应为 true 且 `playable` 可为 true
