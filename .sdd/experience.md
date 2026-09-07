@@ -103,3 +103,9 @@
 - **根因**：`playerStore` 初始态直接挂载 `SEED_RECOMMENDATIONS`，无「等待荐歌」状态
 - **修复**：`recommendationsReady` + 空列表初始态；`RecommendList` 等待态 UI；荐歌/搜索/历史消息写入后才 `ready`
 - **避坑规则**：种子歌仅作后端降级与 Mock 对齐，不得作为播放页首屏默认展示；`setRecommendations` 是唯一「推荐就绪」入口
+
+### 文档修整: README 与实际运行方式保持一致
+- **触发**：README 把 Docker 作为快速启动主流程，但项目面试演示实际使用本地脚本，且历史 Docker 构建受网络环境影响
+- **根因**：README 未随前端依赖升级和最终验收同步更新
+- **修复**：本地脚本改为唯一推荐启动方式；删除 Docker 启动与故障排查；React/Ant Design/Vite 版本对齐 `package.json`
+- **避坑规则**：README 的技术栈版本必须以依赖清单为准；可选部署方案不得写成唯一或默认启动前置条件
