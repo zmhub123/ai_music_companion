@@ -18,18 +18,25 @@ interface AuthState {
   bumpScoreRetry: () => void
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
   guestReady: false,
   netease: { logged_in: false, nickname: null },
   neteaseLoginOpen: false,
   scoreRetryNonce: 0,
   refreshAuth: async () => {
+    const prevLoggedIn = get().netease.logged_in
     await getGuestMe()
     const netease = await getNeteaseAuthStatus()
+    if (netease.logged_in !== prevLoggedIn) {
+      const { clearPlaybackCache } = await import('./playerStore')
+      clearPlaybackCache()
+    }
     set({ guestReady: true, netease })
   },
   logoutNeteaseAccount: async () => {
     const netease = await logoutNetease()
+    const { clearPlaybackCache } = await import('./playerStore')
+    clearPlaybackCache()
     set({ netease })
   },
   openNeteaseLogin: () => set({ neteaseLoginOpen: true }),

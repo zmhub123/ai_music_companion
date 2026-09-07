@@ -3,9 +3,12 @@ import type { ApiResponse } from '../types/api'
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
-  timeout: 10000,
+  timeout: 20000,
   withCredentials: true,
 })
+
+/** LLM + 网易云搜索/重排可能超过默认超时 */
+export const LLM_REQUEST_TIMEOUT_MS = 60_000
 
 export const useMock = import.meta.env.VITE_USE_MOCK === 'true'
 
@@ -26,6 +29,9 @@ export const useScoreMock = useMock && import.meta.env.VITE_MOCK_SCORE !== 'fals
 
 export function getApiErrorMessage(err: unknown, fallback = '请求失败'): string {
   if (axios.isAxiosError(err)) {
+    if (err.code === 'ECONNABORTED') {
+      return '请求超时，请稍后重试'
+    }
     const body = err.response?.data as Partial<ApiResponse<unknown>> | undefined
     if (body?.message) return body.message
   }

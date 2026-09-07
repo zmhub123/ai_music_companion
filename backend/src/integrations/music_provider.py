@@ -145,6 +145,91 @@ _SONG_REQUEST_PREFIX = re.compile(
 )
 _QUOTED_TITLE = re.compile(r"[《「『]([^》」』]+)[》」』]")
 
+# 歌手昵称/别名 → 网易云搜索词（优先英文全名，召回更准）
+ARTIST_ALIASES: dict[str, str] = {
+    "霉霉": "Taylor Swift",
+    "泰勒丝": "Taylor Swift",
+    "泰勒斯威夫特": "Taylor Swift",
+    "泰勒·斯威夫特": "Taylor Swift",
+    "taylorswift": "Taylor Swift",
+    "taylor swift": "Taylor Swift",
+    "周杰伦": "周杰伦",
+    "杰伦": "周杰伦",
+    "周董": "周杰伦",
+    "林俊杰": "林俊杰",
+    "邓紫棋": "邓紫棋",
+    "gem": "邓紫棋",
+    "陈奕迅": "陈奕迅",
+    "eason": "陈奕迅",
+    "薛之谦": "薛之谦",
+    "毛不易": "毛不易",
+    "李荣浩": "李荣浩",
+    "王菲": "王菲",
+    "张学友": "张学友",
+    "刘德华": "刘德华",
+    "蔡依林": "蔡依林",
+    "孙燕姿": "孙燕姿",
+    "五月天": "五月天",
+    "朴树": "朴树",
+    "赵雷": "赵雷",
+    "马頔": "马頔",
+}
+
+_ARTIST_SONG_SUFFIX = re.compile(r"^(?P<core>.+?)(?:的)?(?:歌|曲|音乐)$")
+
+
+def resolve_artist_search_query(text: str) -> str | None:
+    """将歌手昵称解析为网易云搜索词。"""
+    normalized = text.strip()
+    if not normalized:
+        return None
+    lowered = normalized.lower()
+    for alias, canonical in sorted(ARTIST_ALIASES.items(), key=lambda item: len(item[0]), reverse=True):
+        if alias.lower() in lowered:
+            return canonical
+    return None
+
+
+def _extract_artist_core_from_target(target: str) -> str:
+    cleaned = target.strip()
+    match = _ARTIST_SONG_SUFFIX.match(cleaned)
+    if match:
+        return match.group("core").strip()
+    return cleaned
+
+
+def _looks_like_artist_name(name: str) -> bool:
+    core = name.strip()
+    if not core or core in {"歌", "曲", "音乐", "歌曲"}:
+        return False
+    if resolve_artist_search_query(core):
+        return True
+    if any(marker in core for marker in _MOOD_STYLE_TARGET_MARKERS):
+        return False
+    # 2-8 个字符的中文/英文昵称，如「霉霉」「碧梨」
+    return 2 <= len(core) <= 8 and not re.search(r"[？?！!。，,；;]", core)
+
+
+def extract_artist_search_keywords(content: str) -> str | None:
+    """从「想听霉霉的歌」等口语中提取歌手搜索词。"""
+    text = content.strip()
+    if not text:
+        return None
+
+    direct = resolve_artist_search_query(text)
+    if direct:
+        return direct
+
+    target = _extract_listen_target(text)
+    if not target:
+        return None
+
+    core = _extract_artist_core_from_target(target)
+    if not core or not _looks_like_artist_name(core):
+        return None
+
+    return resolve_artist_search_query(core) or core
+
 
 def _normalize_song_title(name: str) -> str:
     text = name.strip()
@@ -226,8 +311,16 @@ def _looks_like_mood_style_target(target: str) -> bool:
     if any(marker in cleaned for marker in _MOOD_STYLE_TARGET_MARKERS):
         return True
     if re.search(r"(的)?(歌|曲|音乐)$", cleaned) and len(cleaned) <= 12:
+        core = _extract_artist_core_from_target(cleaned)
+        if _looks_like_artist_name(core):
+            return False
         return True
     return False
+
+
+def is_mood_style_search_target(target: str) -> bool:
+    """判断「欢快的歌」这类情绪/风格描述，而非具体歌手。"""
+    return _looks_like_mood_style_target(target)
 
 
 def is_direct_song_request(content: str) -> bool:
@@ -1072,6 +1165,14 @@ async def resolve_track_audio(song_id: int) -> TrackAudioResult | None:
         except Exception as exc:
             logger.warning("pyncm play url failed", song_id=song_id, error=str(exc))
     return None
+
+
+def invalidate_track_audio_cache(song_id: int | None = None) -> None:
+    """网易云登录态变化后清理匿名 Session 下的试听缓存。"""
+    if song_id is None:
+        _track_audio_cache.clear()
+        return
+    _track_audio_cache.pop(song_id, None)
 
 
 async def resolve_direct_play_url(song_id: int) -> str | None:

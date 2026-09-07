@@ -5,13 +5,14 @@ import {
   StepBackwardOutlined,
   StepForwardOutlined,
   RetweetOutlined,
+  SwapOutlined,
   PlusOutlined,
   FileTextOutlined,
 } from '@ant-design/icons'
 import { App, Spin } from 'antd'
 import SongCover from '../common/SongCover'
 import AddToPlaylistModal from './AddToPlaylistModal'
-import { bindAudioEnded, usePlayerStore } from '../../stores/playerStore'
+import { bindAudioEnded, PLAY_MODE_LABELS, usePlayerStore } from '../../stores/playerStore'
 import { useScoreStore } from '../../stores/scoreStore'
 import { confirmVipPlayback } from '../../utils/playConfirm'
 
@@ -30,9 +31,14 @@ export default function VinylPlayer() {
   const progress = usePlayerStore((s) => s.progress)
   const duration = usePlayerStore((s) => s.duration)
   const togglePlay = usePlayerStore((s) => s.togglePlay)
+  const playNext = usePlayerStore((s) => s.playNext)
+  const playPrevious = usePlayerStore((s) => s.playPrevious)
+  const cyclePlayMode = usePlayerStore((s) => s.cyclePlayMode)
+  const handleTrackEnd = usePlayerStore((s) => s.handleTrackEnd)
+  const playMode = usePlayerStore((s) => s.playMode)
+  const recommendationsReady = usePlayerStore((s) => s.recommendationsReady)
   const seek = usePlayerStore((s) => s.seek)
   const tickProgress = usePlayerStore((s) => s.tickProgress)
-  const pause = usePlayerStore((s) => s.pause)
   const openGenerateModal = useScoreStore((s) => s.openGenerateModal)
   const [playlistModalOpen, setPlaylistModalOpen] = useState(false)
 
@@ -40,8 +46,10 @@ export default function VinylPlayer() {
   const draggingRef = useRef(false)
 
   useEffect(() => {
-    bindAudioEnded(() => pause())
-  }, [pause])
+    bindAudioEnded(() => {
+      void handleTrackEnd()
+    })
+  }, [handleTrackEnd])
 
   useEffect(() => {
     if (!playing) return
@@ -83,22 +91,40 @@ export default function VinylPlayer() {
   }
 
   const armState = playing ? 'playing' : 'paused'
+  const hasTrack = currentSong.netease_song_id > 0
+  const canSkip = hasTrack && recommendationsReady
 
-  const handlePlayToggle = () => {
-    void togglePlay().then(async (err) => {
-      if (!err) return
-      if (err === '已取消播放') return
-      if (err.startsWith('http')) {
-        if (currentSong.vip_only) {
-          await confirmVipPlayback(currentSong.song_name, err)
-          return
-        }
-        message.warning('暂无法内嵌播放，请尝试外链播放')
-        window.open(err, '_blank', 'noopener,noreferrer')
+  const handlePlayError = async (err: string | null) => {
+    if (!err) return
+    if (err === '已取消播放' || err === '没有上一首' || err === '没有下一首') {
+      if (err !== '已取消播放') message.info(err)
+      return
+    }
+    if (err.startsWith('http')) {
+      if (currentSong.vip_only) {
+        await confirmVipPlayback(currentSong.song_name, err)
         return
       }
-      message.error(err)
-    })
+      message.warning('暂无法内嵌播放，请尝试外链播放')
+      window.open(err, '_blank', 'noopener,noreferrer')
+      return
+    }
+    message.error(err)
+  }
+
+  const handlePlayToggle = () => {
+    if (!hasTrack) return
+    void togglePlay().then((err) => handlePlayError(err))
+  }
+
+  const handlePrevious = () => {
+    if (!canSkip) return
+    void playPrevious().then((err) => handlePlayError(err))
+  }
+
+  const handleNext = () => {
+    if (!canSkip) return
+    void playNext().then((err) => handlePlayError(err))
   }
 
   return (
@@ -154,7 +180,14 @@ export default function VinylPlayer() {
       </div>
 
       <div className="player-controls">
-        <button type="button" className="ctrl-btn ctrl-btn-icon" title="上一首" aria-label="上一首">
+        <button
+          type="button"
+          className="ctrl-btn ctrl-btn-icon"
+          title="上一首"
+          aria-label="上一首"
+          disabled={!canSkip || loading}
+          onClick={handlePrevious}
+        >
           <StepBackwardOutlined />
         </button>
         <button
@@ -162,7 +195,7 @@ export default function VinylPlayer() {
           className={`ctrl-btn play-main${playing ? ' playing-pulse' : ''}`}
           title={playing ? '暂停' : '播放'}
           aria-label={playing ? '暂停' : '播放'}
-          disabled={loading}
+          disabled={loading || !hasTrack}
           onClick={handlePlayToggle}
         >
           {loading ? (
@@ -173,20 +206,35 @@ export default function VinylPlayer() {
             <CaretRightOutlined />
           )}
         </button>
-        <button type="button" className="ctrl-btn ctrl-btn-icon" title="下一首" aria-label="下一首">
+        <button
+          type="button"
+          className="ctrl-btn ctrl-btn-icon"
+          title="下一首"
+          aria-label="下一首"
+          disabled={!canSkip || loading}
+          onClick={handleNext}
+        >
           <StepForwardOutlined />
         </button>
-        <button type="button" className="ctrl-btn ctrl-btn-icon" title="循环播放" aria-label="循环播放">
-          <RetweetOutlined />
+        <button
+          type="button"
+          className={`ctrl-btn ctrl-btn-icon${playMode !== 'sequential' ? ' active' : ''}`}
+          title={PLAY_MODE_LABELS[playMode]}
+          aria-label={PLAY_MODE_LABELS[playMode]}
+          disabled={!hasTrack}
+          onClick={cyclePlayMode}
+        >
+          {playMode === 'shuffle' ? <SwapOutlined /> : <RetweetOutlined />}
+          {playMode === 'loop' ? <span className="ctrl-mode-one">1</span> : null}
         </button>
       </div>
 
       <div className="player-actions">
-        <button type="button" className="btn-primary-action" onClick={openGenerateModal}>
+        <button type="button" className="btn-primary-action" disabled={!hasTrack} onClick={openGenerateModal}>
           <FileTextOutlined />
           <span>生成曲谱</span>
         </button>
-        <button type="button" className="btn-outline" onClick={() => setPlaylistModalOpen(true)}>
+        <button type="button" className="btn-outline" disabled={!hasTrack} onClick={() => setPlaylistModalOpen(true)}>
           <PlusOutlined />
           <span>加入歌单</span>
         </button>

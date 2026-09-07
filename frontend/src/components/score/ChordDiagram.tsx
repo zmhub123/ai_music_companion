@@ -4,6 +4,7 @@ interface ChordDiagramProps {
   name: string
   shape: ChordShape
   stringCount: number
+  missing?: boolean
 }
 
 const STRING_GAP = 12
@@ -16,7 +17,7 @@ function stringX(index: number) {
   return PAD_X + index * STRING_GAP
 }
 
-export default function ChordDiagram({ name, shape, stringCount }: ChordDiagramProps) {
+export default function ChordDiagram({ name, shape, stringCount, missing = false }: ChordDiagramProps) {
   const frets = 4
   const cols = Array.from({ length: stringCount }, (_, i) => i)
   const topMarks = shape.tops.length ? shape.tops : cols.map(() => '')
@@ -28,8 +29,13 @@ export default function ChordDiagram({ name, shape, stringCount }: ChordDiagramP
   const dotY = (fret: number) => nutY + (fret - 0.5) * FRET_H
 
   return (
-    <div className="chord-diagram">
+    <div className={`chord-diagram${missing ? ' chord-diagram-missing' : ''}`}>
       <div className="chord-diagram-name">{name}</div>
+      {missing ? (
+        <div className="chord-diagram-placeholder" aria-label={`${name} 暂无指法图`}>
+          暂无指法
+        </div>
+      ) : (
       <svg
         className="chord-diagram-svg"
         width={boardW}
@@ -112,6 +118,7 @@ export default function ChordDiagram({ name, shape, stringCount }: ChordDiagramP
           )
         })}
       </svg>
+      )}
     </div>
   )
 }

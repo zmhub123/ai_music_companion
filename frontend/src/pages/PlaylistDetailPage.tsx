@@ -10,6 +10,7 @@ export default function PlaylistDetailPage() {
   const navigate = useNavigate()
   const { message } = App.useApp()
   const playSong = usePlayerStore((s) => s.playSong)
+  const setRecommendations = usePlayerStore((s) => s.setRecommendations)
   const [detail, setDetail] = useState<PlaylistDetail | null>(null)
   const [query, setQuery] = useState('')
 
@@ -83,6 +84,13 @@ export default function PlaylistDetailPage() {
               className="song-play-btn"
               aria-label="播放"
               onClick={() => {
+                const playerSongs = detail.songs.map((item) => ({
+                  netease_song_id: item.netease_song_id,
+                  song_name: item.song_name,
+                  artist_name: item.artist_name,
+                  cover_url: item.cover_url,
+                }))
+                setRecommendations(playerSongs)
                 void playSong({
                   netease_song_id: song.netease_song_id,
                   song_name: song.song_name,

@@ -2,6 +2,7 @@ import { type MouseEvent } from 'react'
 import { App, Spin } from 'antd'
 import { MenuFoldOutlined } from '@ant-design/icons'
 import SongCover from '../common/SongCover'
+import { useChatStore } from '../../stores/chatStore'
 import { usePlayerStore } from '../../stores/playerStore'
 import type { PlayerSong } from '../../types/song'
 import { confirmVipPlayback } from '../../utils/playConfirm'
@@ -13,6 +14,8 @@ interface RecommendListProps {
 export default function RecommendList({ onCollapse }: RecommendListProps) {
   const { message } = App.useApp()
   const recommendations = usePlayerStore((s) => s.recommendations)
+  const recommendationsReady = usePlayerStore((s) => s.recommendationsReady)
+  const chatSending = useChatStore((s) => s.sending)
   const currentSong = usePlayerStore((s) => s.currentSong)
   const loading = usePlayerStore((s) => s.loading)
   const playSong = usePlayerStore((s) => s.playSong)
@@ -50,7 +53,19 @@ export default function RecommendList({ onCollapse }: RecommendListProps) {
         ) : null}
       </div>
       <div className="rec-list">
-        {recommendations.map((song, i) => (
+        {!recommendationsReady ? (
+          <div className="rec-list-pending">
+            {chatSending ? (
+              <>
+                <Spin size="small" />
+                <p>AI 正在为你荐歌…</p>
+              </>
+            ) : (
+              <p>和 AI 聊聊你的心情，专属推荐会出现在这里</p>
+            )}
+          </div>
+        ) : (
+          recommendations.map((song, i) => (
           <div
             key={song.netease_song_id}
             className={`rec-card${currentSong.netease_song_id === song.netease_song_id ? ' active' : ''}`}
@@ -82,11 +97,14 @@ export default function RecommendList({ onCollapse }: RecommendListProps) {
               )}
             </button>
           </div>
-        ))}
+          ))
+        )}
       </div>
+      {recommendationsReady ? (
       <button type="button" className="btn-more">
         查看更多推荐
       </button>
+      ) : null}
     </aside>
   )
 }

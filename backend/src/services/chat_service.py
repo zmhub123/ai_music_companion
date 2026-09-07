@@ -17,8 +17,11 @@ from src.db.models import ChatMessage, GuestSession
 from src.integrations.dashscope_client import DashScopeClient, DashScopeError, get_dashscope_client
 from src.integrations.music_provider import (
     SongCandidate,
+    extract_artist_search_keywords,
     extract_song_search_keywords,
     is_direct_song_request,
+    is_mood_style_search_target,
+    resolve_artist_search_query,
     search_songs,
 )
 
@@ -216,10 +219,32 @@ def _mood_title_bias(song_name: str, user_content: str) -> int:
     return 0
 
 
+def _artist_match_score(song: SongCandidate, artist_query: str) -> int:
+    artist = song.artist_name.lower()
+    query = artist_query.lower()
+    if query in artist or artist in query:
+        return 100
+    canonical = resolve_artist_search_query(artist_query) or artist_query
+    if canonical.lower() in artist:
+        return 90
+    return 0
+
+
 def _sort_candidates_for_user(
     candidates: list[SongCandidate],
     user_content: str,
 ) -> list[SongCandidate]:
+    artist_query = extract_artist_search_keywords(user_content)
+    if artist_query:
+        return sorted(
+            candidates,
+            key=lambda song: (
+                _artist_match_score(song, artist_query),
+                -int(song.is_original or False),
+            ),
+            reverse=True,
+        )
+
     return sorted(
         candidates,
         key=lambda song: (
@@ -231,15 +256,20 @@ def _sort_candidates_for_user(
 
 
 def _extract_keywords_heuristic(content: str, guest: GuestSession) -> str:
-    mood_query = _extract_mood_style_query(content)
-    if mood_query:
-        return mood_query
+    artist_query = extract_artist_search_keywords(content)
+    if artist_query:
+        return artist_query
 
     song_query = extract_song_search_keywords(content)
     if song_query and song_query != content.strip():
+        if not is_mood_style_search_target(song_query):
+            return song_query
+    if song_query and len(song_query) <= 12 and not is_mood_style_search_target(song_query):
         return song_query
-    if song_query and len(song_query) <= 12:
-        return song_query
+
+    mood_query = _extract_mood_style_query(content)
+    if mood_query:
+        return mood_query
 
     for style in guest.style_preferences or []:
         if style in content:
@@ -298,6 +328,14 @@ async def _extract_keywords(
     guest: GuestSession,
     history: list[ChatMessage],
 ) -> str:
+    artist_query = extract_artist_search_keywords(content)
+    if artist_query:
+        return artist_query
+
+    song_query = extract_song_search_keywords(content)
+    if song_query and song_query != content.strip() and not is_mood_style_search_target(song_query):
+        return song_query
+
     mood_query = _extract_mood_style_query(content)
     if mood_query:
         return mood_query

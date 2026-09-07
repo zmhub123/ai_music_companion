@@ -160,6 +160,14 @@ def test_mood_keyword_extraction_for_cheerful_request() -> None:
     assert keywords == "欢快 流行"
 
 
+def test_artist_keyword_extraction_for_meimei_overrides_mood() -> None:
+    from src.db.models import GuestSession
+
+    guest = GuestSession()
+    keywords = chat_service._extract_keywords_heuristic("我很高兴，想听霉霉的歌", guest)
+    assert keywords == "Taylor Swift"
+
+
 def test_mood_title_bias_penalizes_sad_song_names() -> None:
     assert chat_service._mood_title_bias("今天晚上的夜还很长", "今天很开心，想听欢快的歌") < 0
     assert chat_service._mood_title_bias("阳光彩虹小白马", "今天很开心，想听欢快的歌") > 0

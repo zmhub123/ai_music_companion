@@ -1,7 +1,7 @@
 import axios from 'axios'
 import { mockGetMessages, mockSendMessage } from '../mocks/chat'
 import type { ApiResponse, ChatMessage, SendMessageResponse } from '../types/api'
-import api, { rethrowApiError, useChatMock } from './api'
+import api, { LLM_REQUEST_TIMEOUT_MS, rethrowApiError, useChatMock } from './api'
 import { ensureGuestSession } from './guestService'
 
 async function withGuestAuth<T>(request: () => Promise<T>): Promise<T> {
@@ -42,7 +42,9 @@ export async function sendMessage(content: string): Promise<SendMessageResponse>
   }
 
   const { data } = await withGuestAuth(() =>
-    api.post<ApiResponse<SendMessageResponse>>('/v1/chat/messages', { content }),
+    api.post<ApiResponse<SendMessageResponse>>('/v1/chat/messages', { content }, {
+      timeout: LLM_REQUEST_TIMEOUT_MS,
+    }),
   )
   if (data.code !== 200 || !data.data) throw new Error(data.message)
   return data.data

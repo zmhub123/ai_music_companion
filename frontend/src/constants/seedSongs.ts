@@ -53,3 +53,11 @@ export const DEFAULT_PLAYER_SONG: PlayerSong = {
   vip_only: SEED_RECOMMENDATIONS[0].vip_only,
   playable: SEED_RECOMMENDATIONS[0].playable,
 }
+
+/** 播放页等待 AI 荐歌时的占位，不可播放 */
+export const EMPTY_PLAYER_SONG: PlayerSong = {
+  netease_song_id: 0,
+  song_name: '等待荐歌',
+  artist_name: '和 AI 聊聊你的心情',
+  cover_url: '',
+}

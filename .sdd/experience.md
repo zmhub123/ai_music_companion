@@ -70,3 +70,36 @@
 - **为什么仍然犯错**：可播性检测与 play-url 未解析 `freeTrialInfo`/`fee` 组合态
 - **修复**：`_inspect_track_audio_item` 识别试听；`play-url` 返回 `vip_trial`/`trial_duration_sec`；前端 `showVipTrialNotice` 弹窗
 - **避坑规则**：`GetTrackAudio` 有 URL 不等于完整可播；必须检查 `freeTrialInfo` 或试听 CDN；荐歌 `vip_only` 在试听场景应为 true 且 `playable` 可为 true
+
+### Bugfix: 网易云登录后仍播放 VIP 试听或无法播放
+- **触发**：扫码登录 VIP 账号后，VIP 歌曲仍只播 30 秒或点击无反应
+- **根因**：① 前端 `playUrlCache` 缓存了登录前的试听 URL，登录后未失效；② `vip_only && playable===false` 时前端直接拦截，不请求带 Cookie 的 `play-url`
+- **修复**：登录/登出时 `clearPlaybackCache()`；已登录用户跳过 VIP 拦截并重新拉取 play-url；后端登录时 `invalidate_track_audio_cache()`
+- **避坑规则**：网易云 Cookie 路径已能返回完整音源时，前端不得复用匿名试听缓存；部分曲目（如部分周杰伦版权）即使登录仍可能 50004，需提示「呜呜音源要钱」而非登录
+
+### Bugfix: AI 生成曲谱和弦指法图为空
+- **触发**：《Good Time》等 AI 扒谱曲目，右侧 Gm7/D#maj7 等指法格无按弦点
+- **根因**：`chordShapes.ts` 仅含种子谱常用和弦；`resolveChordShape` 无法解析 m7、升号 maj7
+- **修复**：补充 Gm7/Cm7/Ebmaj7/Abmaj7 等指法；增强和弦名归一化与回落查找；未命中显示「暂无指法」
+- **避坑规则**：音频分析产出和弦名不受限，指法库与解析器须覆盖 m7/maj7/#b 根音；禁止静默渲染空指法图
+
+### Bugfix: 歌手昵称荐歌被情绪词覆盖
+- **触发**：用户说「想听霉霉的歌」，系统推荐「欢快 流行」类无关歌曲
+- **根因**：① `_extract_mood_style_query` 因「高兴」优先返回情绪搜索词；② 「X的歌」一律被判为情绪/风格描述；③ 无歌手昵称别名表
+- **已有经验回查**：有 T-010 歌名提取经验，但未覆盖歌手昵称与情绪优先级冲突
+- **为什么仍然犯错**：情绪荐歌规则后于歌手实体识别设计，别名未纳入契约
+- **修复**：`ARTIST_ALIASES` + `extract_artist_search_keywords`；关键词优先级歌手>歌名>情绪；歌手请求按 `artist_name` 排序
+- **避坑规则**：「想听霉霉/周杰伦的歌」类请求必须先解析歌手别名；情绪词（开心/欢快）不得覆盖已识别歌手；`_looks_like_mood_style_target` 须区分「欢快的歌」与「霉霉的歌」
+
+### Bugfix: 清除游客数据后前端 Store 未同步
+- **触发**：点击「清除全部数据」后，AI 助手聊天框仍显示旧对话
+- **根因**：后端 `DELETE /guest/data` 已删库，但 `chatStore.messages` 留在内存；`ChatFloat` 全局挂载不触发重新拉取
+- **已有经验回查**：无直接条目
+- **修复**：`resetAfterGuestClear` 清空 chat/player store；`MePage` 清除后调用 `resetClientSessionAfterGuestClear`；补后端测试断言消息为空
+- **避坑规则**：任何「清除游客数据」入口必须同时重置前端 Zustand（聊天、播放器、鉴权），不能仅依赖后端删库或组件 remount
+
+### Bugfix: 播放页初始不应展示种子推荐
+- **触发**：首页心情进入播放页时，左侧先显示种子 5 首歌，AI 荐歌返回后才替换
+- **根因**：`playerStore` 初始态直接挂载 `SEED_RECOMMENDATIONS`，无「等待荐歌」状态
+- **修复**：`recommendationsReady` + 空列表初始态；`RecommendList` 等待态 UI；荐歌/搜索/历史消息写入后才 `ready`
+- **避坑规则**：种子歌仅作后端降级与 Mock 对齐，不得作为播放页首屏默认展示；`setRecommendations` 是唯一「推荐就绪」入口

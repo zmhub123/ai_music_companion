@@ -18,6 +18,7 @@ interface ChatState {
   fetchMessages: () => Promise<void>
   sendMessage: (content: string) => Promise<void>
   resetConversation: () => Promise<void>
+  resetAfterGuestClear: () => void
   openChat: () => void
   minimizeChat: () => void
   closeChat: () => void
@@ -133,6 +134,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
   resetConversation: async () => {
     await resetChat()
     set({ messages: [] })
+  },
+
+  resetAfterGuestClear: () => {
+    set({
+      messages: [],
+      sending: false,
+      loading: false,
+      floatState: 'closed',
+      playerChatDocked: false,
+    })
   },
 
   openChat: () => set({ floatState: 'open', playerChatDocked: false }),

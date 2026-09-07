@@ -8,6 +8,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.db.models import GuestSession
+from src.integrations.music_provider import invalidate_track_audio_cache
 from src.integrations.netease_auth import poll_qr_login_async, start_qr_login_async
 
 
@@ -31,6 +32,7 @@ async def poll_login_qr(
     guest.netease_cookies = result.get("cookies") or {}
     guest.netease_nickname = str(result.get("nickname") or "网易云用户")
     guest.last_active_at = datetime.now(UTC)
+    invalidate_track_audio_cache()
     await db.commit()
     await db.refresh(guest)
     return {
@@ -45,6 +47,7 @@ async def logout_netease(db: AsyncSession, guest: GuestSession) -> GuestSession:
     guest.netease_cookies = None
     guest.netease_nickname = None
     guest.last_active_at = datetime.now(UTC)
+    invalidate_track_audio_cache()
     await db.commit()
     await db.refresh(guest)
     return guest

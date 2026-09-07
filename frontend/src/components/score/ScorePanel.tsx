@@ -34,11 +34,15 @@ export default function ScorePanel() {
     const abort = new AbortController()
     const songId = currentSong.netease_song_id
 
-    setFetching(true)
-    setError('')
-    setScore(null)
-    setProgress(0)
-    setStageLabel('准备生成曲谱…')
+    // 切换歌曲/乐器时重置并拉取谱面（数据加载类 effect）
+    queueMicrotask(() => {
+      if (loadTokenRef.current !== loadToken) return
+      setFetching(true)
+      setError('')
+      setScore(null)
+      setProgress(0)
+      setStageLabel('准备生成曲谱…')
+    })
 
     void (async () => {
       try {
@@ -180,15 +184,19 @@ export default function ScorePanel() {
                 <div className="score-charts-block">
                   <div className="score-charts-label">和弦指法</div>
                   <div className="chord-diagrams-row">
-                    {uniqueChords.map((name) => (
+                  {uniqueChords.map((name) => {
+                    const shape = resolveChordShape(name, instrument)
+                    return (
                       <ChordDiagram
                         key={name}
                         name={name}
-                        shape={resolveChordShape(name, instrument) ?? { tops: [], dots: [] }}
+                        shape={shape ?? { tops: [], dots: [] }}
                         stringCount={stringCount}
+                        missing={!shape}
                       />
-                    ))}
-                  </div>
+                    )
+                  })}
+                </div>
                 </div>
                 <RhythmPattern instrument={instrument} pattern={score.rhythm_pattern} />
               </div>

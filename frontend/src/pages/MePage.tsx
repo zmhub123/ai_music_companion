@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { App, Modal } from 'antd'
 import { useNavigate } from 'react-router-dom'
 import { clearGuestData, getGuestMe, updatePreferences } from '../services/guestService'
+import { resetClientSessionAfterGuestClear } from '../stores/sessionReset'
 import { useGuestStore } from '../stores/guestStore'
 import type { SkillLevel } from '../types/api'
 
@@ -62,6 +63,7 @@ export default function MePage() {
       cancelText: '取消',
       onOk: async () => {
         await clearGuestData()
+        await resetClientSessionAfterGuestClear()
         await fetchProfile()
         message.success('数据已清除')
         navigate('/')

@@ -38,6 +38,10 @@ def test_guest_session_flow(client: TestClient) -> None:
     assert cleared.json()["data"]["cleared"] is True
     assert cleared.json()["data"]["onboarding_completed"] is False
 
+    messages = client.get("/api/v1/chat/messages", cookies={"guest_id": guest_id})
+    assert messages.status_code == 200
+    assert messages.json()["data"]["total"] == 0
+
 
 def test_guest_me_without_cookie(client: TestClient) -> None:
     res = client.get("/api/v1/guest/me")
